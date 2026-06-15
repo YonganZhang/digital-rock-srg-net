@@ -220,7 +220,7 @@ Per‑fold and aggregate `R² / MAE / RMSE` are printed to stdout and written to
 
 | Key | Shape | Dtype | Meaning |
 |---|---|---|---|
-| `voxel` | `(N, D, D, D)` | `uint8` | binary pore geometry (`D` = 128 or 256), kept as `uint8` in RAM |
+| `voxel` | `(N, D, D, D)` | `uint8` | binary pore geometry (`D` = 128 ), kept as `uint8` in RAM |
 | `features` | `(N, F)` | `float32` | morphological descriptors (porosity, tortuosity, connectivity, …) |
 | `Srg` | `(N,)` | `float32` | residual gas saturation ∈ [0, 1] — **primary target** |
 | `sample_id` | `(N,)` | str | per‑sub‑volume id |
