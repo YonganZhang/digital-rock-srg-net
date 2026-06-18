@@ -46,6 +46,7 @@
 - [Model zoo](#-model-zoo)
 - [Repository layout](#-repository-layout)
 - [Quick start](#-quick-start)
+- [Quick test](#-quick-tes)
 - [Dataset schema](#️-dataset-not-included)
 - [Project status](#-project-status)
 - [Citation](#-citation)
@@ -162,6 +163,7 @@ Every model shares the signature `forward(voxel, features) -> prediction` and is
 digital-rock-srg-net/
 ├── 🧱 model.py          # lightweight baselines: SimpleSrgNet, PhiOnlyBaseline, TauGate variants
 ├── 🏗️  models_3d.py      # the full 3D model zoo + fusion blocks + PoreFlowNet / PoreDualNet
+├── 🧪  quick_test.py     # the quick test
 ├── 🗃️  data.py           # dataset interface, leave-one-rock-out splitting, leakage-safe stats
 ├── 🚂 train.py          # 6-fold cross-validation training / evaluation entry point
 ├── 📋 requirements.txt
@@ -178,12 +180,12 @@ git clone https://github.com/YonganZhang/digital-rock-srg-net.git
 cd digital-rock-srg-net
 pip install -r requirements.txt
 
-# Train + 6-fold leave-one-rock-out evaluation of the main baseline
-python train.py --data data/processed/voxel_128.npz --model simple --epochs 80 \
-                --scheduler cosine --augment --gpu 0
+# Verify installation and model execution
+python quick_test.py
 
-# Descriptor-only baseline for comparison
-python train.py --data data/processed/voxel_128.npz --model phi --epochs 30 --gpu 0
+# Train + 6-fold leave-one-rock-out evaluation of PoreDualNet
+python train.py --data data/processed/voxel_128.npz --model poredualnet --epochs 80 \
+                --scheduler cosine --augment --gpu 0
 ```
 
 Per‑fold and aggregate `R² / MAE / RMSE` are printed to stdout and written to
