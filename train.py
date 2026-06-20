@@ -1,13 +1,16 @@
-"""P1 sanity-check trainer · 6-fold leave-one-rock-out CV on 128^3
+""" 6-fold leave-one-rock-out CV on 128^3
 
 Lightning module:
-- 输入: voxel + features
-- 输出: Srg ∈ (0, 1)
-- loss: MSE on Srg
-- 评估: R^2, MAE, RMSE  (per-fold + 汇总)
+    - Input: Voxel grid + tabular features.
+    - Output: Srg in (0, 1).
+    - Loss: MSE on Srg.
+    - Metrics: R2, MAE, RMSE (reported per-fold and aggregated).
 
-CV 协议: 6 fold, fold_i 时 val = 母岩心 i 的全部子块, train = 其余 5 块.
-样本量 ~360, 单 fold val ~40-80, train ~280-320.
+CV Protocol:
+    6-fold leave-one-rock-out cross-validation. For fold i, the validation set
+    comprises all sub-volumes of parent core i; the training set contains the
+    remaining 5 cores. Total samples approximately 360; per-fold validation size
+    approximately 40-80, training size approximately 280-320.
 
 Usage:
     python train.py --data data/processed/voxel_128.npz --model simple --epochs 30 --gpu 0
@@ -69,9 +72,12 @@ def from_logit(z: np.ndarray) -> np.ndarray:
 
 
 class SrgLitModule(L.LightningModule):
-    """target_transform:
-    - 'none': model 直出, train target = Srg, eval clip [0,1]
-    - 'logit': model 直出 logit, train target = logit(Srg), eval sigmoid 还原 + clip
+    """Target transform strategy:
+
+    - 'none': Model outputs raw values directly. Training target is Srg;
+      evaluation outputs are clipped to [0, 1].
+    - 'logit': Model outputs logits. Training target is logit(Srg);
+      evaluation applies sigmoid recovery followed by clipping to [0, 1].
     """
 
     def __init__(self, model: nn.Module, lr: float = 1e-3, weight_decay: float = 1e-4,
@@ -84,8 +90,8 @@ class SrgLitModule(L.LightningModule):
         self.scheduler = scheduler
         self.max_epochs = max_epochs
         self.target_transform = target_transform
-        self.val_preds: list[np.ndarray] = []     # 已反变换 + clip 到 [0,1]
-        self.val_targets: list[np.ndarray] = []   # 原 Srg
+        self.val_preds: list[np.ndarray] = []    # Inverse-transformed and clipped to [0, 1]
+        self.val_targets: list[np.ndarray] = []  # Original Srg
 
     def forward(self, voxel, features):
         return self.model(voxel, features)
@@ -185,10 +191,17 @@ def run_one_fold(
     elif model_name in {"resnet10_tiny_crossattn", "ms_porenet_crossattn",
                         "porecoat_crossattn", "poreformer_crossattn",
                         "poreflownet", "poreflownet_no_taugate",
-                        "poreflownet_no_crossattn", "voxel_only_cnn"}:
+                        "poreflownet_no_crossattn", "voxel_only_cnn",
+                        "poredualnet", "poredualnet_no_taugate",
+                        "poredualnet_no_shortcut"}:
         model = make_model(model_name, n_features=F)
     else:
         raise ValueError(model_name)
+
+    # PoreDualNet variants include a built-in sigmoid; the 'logit' transform
+    # must not be used because it would apply a second sigmoid during evaluation.
+    if model_name.startswith("poredualnet"):
+        target_transform = "none"
 
     lit = SrgLitModule(model, scheduler=cli_scheduler, max_epochs=epochs,
                        target_transform=target_transform)
@@ -200,18 +213,19 @@ def run_one_fold(
         enable_checkpointing=False,
         logger=False,
         log_every_n_steps=5,
-        callbacks=[EarlyStopping(monitor="val_mse", patience=15, mode="min")],   # logit-MSE 单调更稳; val_R² 在 OOD 上震荡触发太早
+        callbacks=[EarlyStopping(monitor="val_mse", patience=15, mode="min")],
     )
     trainer.fit(lit, train_dl, val_dl)
 
-    # 重新跑一遍 val 拿干净的 pred (Lightning 在 fit 末尾不一定 sync val 列表)
+    # Re-run validation to obtain clean predictions.
+    # Lightning does not guarantee synchronized val lists at the end of fit().
     lit.eval()
     yhat_all, y_all, sid_all = [], [], []
     with torch.no_grad():
         for batch in DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0):
             batch_gpu = {k: (v.to(lit.device) if torch.is_tensor(v) else v) for k, v in batch.items()}
             raw_out = lit(batch_gpu["voxel"], batch_gpu["features"]).cpu().numpy()
-            # 与 _step 一致的反变换 + clip
+            # Inverse transform + clip, consistent with _step.
             yhat_orig = from_logit(raw_out) if target_transform == "logit" else raw_out
             yhat_orig = np.clip(yhat_orig, 0.0, 1.0)
             yhat_all.append(yhat_orig)
@@ -252,6 +266,8 @@ def main() -> int:
         "porecoat_crossattn", "poreformer_crossattn",
         "poreflownet", "poreflownet_no_taugate",
         "poreflownet_no_crossattn", "voxel_only_cnn",
+        "poredualnet", "poredualnet_no_taugate",
+        "poredualnet_no_shortcut",
     ], default="simple")
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--batch-size", type=int, default=8)
@@ -266,6 +282,8 @@ def main() -> int:
     print(f"loaded {cache.n} samples, D={cache.D}, F={cache.features.shape[1]}")
     print(f"prefix dist: {dict(zip(*np.unique(cache.prefix, return_counts=True)))}")
 
+    effective_target_transform = "none" if args.model.startswith("poredualnet") else args.target_transform
+
     folds: list[FoldResult] = []
     for prefix in sorted(np.unique(cache.prefix)):
         print(f"\n=== fold val={prefix} ===")
@@ -274,9 +292,9 @@ def main() -> int:
             model_name=args.model, epochs=args.epochs,
             batch_size=args.batch_size, gpu=args.gpu, augment=args.augment,
             cli_scheduler=args.scheduler,
-            target_transform=args.target_transform,
+            target_transform=effective_target_transform,
         )
-        print(f"  n_train={fr.n_train} n_val={fr.n_val} R²={fr.R2:.3f} MAE={fr.MAE:.3f} RMSE={fr.RMSE:.3f}")
+        print(f"  n_train={fr.n_train} n_val={fr.n_val} R2={fr.R2:.3f} MAE={fr.MAE:.3f} RMSE={fr.RMSE:.3f}")
         folds.append(fr)
 
     summary = {
@@ -285,7 +303,8 @@ def main() -> int:
         "batch_size": args.batch_size,
         "augment": args.augment,
         "scheduler": args.scheduler,
-        "target_transform": args.target_transform,
+        "target_transform": effective_target_transform,
+        "requested_target_transform": args.target_transform,
         "n_folds": len(folds),
         "R2_mean": float(np.mean([f.R2 for f in folds])),
         "R2_per_fold": {f.val_prefix: f.R2 for f in folds},
@@ -297,10 +316,10 @@ def main() -> int:
     out = RUNS / f"p1_{args.model}_{args.tag}.json"
     out.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
     print(f"\n=== SUMMARY ({args.model}) ===")
-    print(f"  R²    mean = {summary['R2_mean']:.3f}    per-fold = {summary['R2_per_fold']}")
+    print(f"  R2    mean = {summary['R2_mean']:.3f}    per-fold = {summary['R2_per_fold']}")
     print(f"  MAE   mean = {summary['MAE_mean']:.3f}")
     print(f"  RMSE  mean = {summary['RMSE_mean']:.3f}")
-    print(f"  → {out}")
+    print(f"  -> {out}")
     return 0
 
 

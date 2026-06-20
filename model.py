@@ -1,12 +1,11 @@
-"""P1 sanity-check baseline: 3D CNN + concat fusion + 单头 Srg
+"""Lightweight 3D-CNN baselines for residual gas saturation prediction.
 
-设计原则:
-- 物理一致性: Srg ∈ [0,1] → sigmoid 输出 (硬规则 #1)
-- 容量小: 360 样本养不起大模型 (硬规则 #2 反过拟合)
-- 不上 Cross-Attn (留给 P1.2 完整版); 这一步只验证 pipeline 通 + 看裸模型表现 vs phi-only baseline
+Inputs:
+    voxel: 3D pore geometry tensor with shape (B, 1, D, D, D)
+    features: Morphological descriptor tensor with shape (B, F)
 
-输入: voxel (B, 1, D, D, D) + features (B, F)
-输出: Srg_hat (B,) ∈ (0, 1)
+Output:
+    Predicted residual gas saturation score with shape (B,).
 """
 from __future__ import annotations
 
@@ -29,19 +28,18 @@ class Conv3dBlock(nn.Module):
 
 
 class SimpleSrgNet(nn.Module):
-    """voxel CNN + features MLP → concat → head → sigmoid Srg.
+    """Voxel CNN + feature MLP -> concat -> linear Srg head.
 
     Args:
-        n_features: csv 数值特征维度 (本数据集 = 20)
-        cnn_channels: CNN 三层通道宽度
-        feat_hidden: 特征 MLP 隐层
-        head_hidden: 融合后 head 隐层
-        dropout: P 后续 P3 MC-dropout 用; 这里默认 0.1 也起小正则
+        n_features: Dimensionality of numerical descriptor features.
+        cnn_channels: Channel dimensions for the 3-layer CNN.
+        feat_hidden: Hidden dimension of the feature MLP.
+        head_hidden: Hidden dimension of the post-fusion head.
+        dropout: Dropout rate for regularization (default: 0.1).
     """
-
     def __init__(
         self,
-        n_features: int = 20,
+        n_features: int = 18,
         cnn_channels: tuple[int, ...] = (16, 32, 64),
         feat_hidden: int = 32,
         head_hidden: int = 32,
@@ -73,27 +71,20 @@ class SimpleSrgNet(nn.Module):
         h_v = self.global_pool(h_v).flatten(1)        # (B, C_last)
         h_f = self.feat_mlp(features)                  # (B, F)
         h = torch.cat([h_v, h_f], dim=1)
-        out = self.head(h).squeeze(-1)                 # (B,) linear, 不加 sigmoid
-        return out                                     # 物理约束在 train.py 用 logit_y / eval clip 实现
+        out = self.head(h).squeeze(-1)                 # (B,) linear, without sigmoid
+        return out
 
 
 class SimpleSrgNetSigmoid(SimpleSrgNet):
-    """与 SimpleSrgNet 同结构, 但加 sigmoid head (复现 P1.2b 0.493 baseline)."""
+    """SimpleSrgNet with sigmoid head."""
     def forward(self, voxel, features):
         return torch.sigmoid(super().forward(voxel, features))
 
 
 class SimpleTauGateNet(SimpleSrgNet):
-    """SimpleSrgNet + TauGate · 物理引导版本 (PoreFlowNet v2)
+    """SimpleSrgNet with tau-guided channel gating."""
 
-    设计差异 vs PoreFlowNet v1:
-    - 保留 sigmoid head (复现 P1.2b 已知最佳协议)
-    - 用 concat fusion (P2 数据显示 Cross-Attn 在单 token 上反而退步)
-    - TauGate 调制 voxel pathway
-
-    目标: P1.2b SimpleSrgNet+sigmoid (R²=0.493) + TauGate 物理引导 → R² ≥ 0.50
-    """
-    def __init__(self, n_features: int = 20, tau_idx: int = 1, **kwargs) -> None:
+    def __init__(self, n_features: int = 18, tau_idx: int = 1, **kwargs) -> None:
         super().__init__(n_features=n_features, **kwargs)
         from models_3d import TauGate
         self.tau_gate = TauGate(self.cnn_out_dim, tau_idx=tau_idx)
@@ -101,16 +92,16 @@ class SimpleTauGateNet(SimpleSrgNet):
     def forward(self, voxel, features):
         h_v = self.cnn(voxel)
         h_v = self.global_pool(h_v).flatten(1)
-        h_v = self.tau_gate(h_v, features)             # 🔑 物理引导
+        h_v = self.tau_gate(h_v, features)             # tau-guided channel gating
         h_f = self.feat_mlp(features)
         h = torch.cat([h_v, h_f], dim=1)
         return torch.sigmoid(self.head(h).squeeze(-1))   # sigmoid head
 
 
 class PhiOnlyBaseline(nn.Module):
-    """sanity check 的 sanity check: 仅靠 phi 一列预测 Srg, 看 CNN+特征模型有没有真"超过它"."""
+    """Descriptor-only MLP baseline for comparing against voxel-fusion models."""
 
-    def __init__(self, n_features: int = 20) -> None:
+    def __init__(self, n_features: int = 18) -> None:
         super().__init__()
         self.mlp = nn.Sequential(
             nn.Linear(n_features, 16),
@@ -119,4 +110,4 @@ class PhiOnlyBaseline(nn.Module):
         )
 
     def forward(self, voxel: torch.Tensor, features: torch.Tensor) -> torch.Tensor:
-        return self.mlp(features).squeeze(-1)   # linear, 不加 sigmoid
+        return self.mlp(features).squeeze(-1)   # linear output, no sigmoid

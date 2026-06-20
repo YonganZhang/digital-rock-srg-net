@@ -53,9 +53,9 @@ of random splitting.
 | --- | --- |
 | Data interface | Cached `.npz` loader for voxel grids, tabular descriptors, targets, and group ids |
 | Splitting protocol | Leave-one-rock-out cross-validation using the `prefix` parent-core key |
-| Architectures | Lightweight 3D CNNs, descriptor-only baseline, 3D ResNet, fusion variants, PoreFlowNet |
+| Architectures | Lightweight 3D CNNs, descriptor-only baseline, 3D ResNet, fusion variants, PoreFlowNet, PoreDualNet |
 | Fusion modules | Concatenation, cross-attention-style gating, FiLM, and TauGate components |
-| Training | PyTorch Lightning trainer with per-fold `R2`, `MAE`, `RMSE`, augmentation, and JSON summaries |
+| Training | PyTorch Lightning trainer with per-fold `R2`, `MAE`, `RMSE`, augmentation, quick smoke test, and JSON summaries |
 
 The dataset itself is not distributed in this repository.
 
@@ -65,6 +65,13 @@ The dataset itself is not distributed in this repository.
 git clone https://github.com/YonganZhang/digital-rock-srg-net.git
 cd digital-rock-srg-net
 python -m pip install -r requirements.txt
+```
+
+Verify that the installation can load data utilities and run the current main model on synthetic
+data:
+
+```bash
+python quick_test.py
 ```
 
 Train the lightweight baseline with leakage-safe grouped CV:
@@ -89,6 +96,19 @@ python train.py \
   --epochs 30 \
   --gpu 0 \
   --tag phi_baseline
+```
+
+Train the current dual-path model:
+
+```bash
+python train.py \
+  --data data/processed/voxel_128.npz \
+  --model poredualnet \
+  --epochs 80 \
+  --scheduler cosine \
+  --augment \
+  --gpu 0 \
+  --tag poredualnet_cosine_aug
 ```
 
 Training writes fold metrics and aggregate scores to:
@@ -118,6 +138,9 @@ value per sample.
 | `poreflownet` | `PoreFlowNet` | TauGate + cross-attention-style fusion model |
 | `poreflownet_no_taugate` | `PoreFlowNet_NoTauGate` | PoreFlowNet ablation without TauGate |
 | `poreflownet_no_crossattn` | `PoreFlowNet_NoCrossAttn` | PoreFlowNet ablation with concat fusion |
+| `poredualnet` | `PoreDualNet` | Dual-path CNN + descriptor shortcut with residual TauGate |
+| `poredualnet_no_taugate` | `PoreDualNet_NoTauGate` | PoreDualNet ablation without residual TauGate |
+| `poredualnet_no_shortcut` | `PoreDualNet_NoShortcut` | PoreDualNet ablation without descriptor shortcut |
 | `voxel_only_cnn` | `VoxelOnlyCNN` | Geometry-only baseline without descriptors |
 
 ## Method Notes
@@ -151,22 +174,24 @@ Key implementation choices:
 - Augmentation is restricted to rotations and flips in the X-Y plane; the Z axis is kept as the
   through-flow direction.
 - The default `logit` target transform trains on logit-space `S_rg` and maps predictions back to
-  `[0, 1]` for evaluation.
+  `[0, 1]` for evaluation; `PoreDualNet` variants use their built-in sigmoid head and switch to
+  direct `S_rg` training in `train.py`.
 
 ## Dataset Format
 
-`data.py` expects a cached `.npz` file with these arrays:
+`data.py` expects a cached `.npz` file with these required arrays:
 
 | Key | Shape | Dtype | Meaning |
 | --- | --- | --- | --- |
 | `voxel` | `(N, D, D, D)` | `uint8` | Binary pore geometry, loaded as `uint8` and cast per batch |
 | `features` | `(N, F)` | `float32` | Morphological descriptors |
 | `Srg` | `(N,)` | `float32` | Residual gas saturation target in `[0, 1]` |
-| `K` | `(N,)` | `float32` | Permeability value retained in the cache |
-| `logK` | `(N,)` | `float32` | Log-permeability value retained in the cache |
 | `sample_id` | `(N,)` | string | Sub-volume sample id |
 | `prefix` | `(N,)` | string | Parent-rock id used for grouped CV |
 | `feature_names` | `(F,)` | string | Descriptor names |
+
+Older caches may also contain `K` and `logK`; the current `S_rg` training path leaves those arrays
+untouched and does not require them.
 
 To use your own data, build this `.npz` file offline and pass it with `--data`.
 
@@ -177,7 +202,8 @@ digital-rock-srg-net/
 ├── assets/digital-rock-srgnet.svg  # README project mark
 ├── data.py                         # cached dataset loader and grouped splitting
 ├── model.py                        # lightweight baselines
-├── models_3d.py                    # 3D backbones, fusion modules, PoreFlowNet variants
+├── models_3d.py                    # 3D backbones, fusion modules, PoreFlowNet/PoreDualNet variants
+├── quick_test.py                    # synthetic smoke test for PoreDualNet
 ├── train.py                        # cross-validation training entry point
 ├── requirements.txt
 ├── LICENSE
@@ -193,6 +219,7 @@ Current benchmark notes in this branch:
 
 - `SimpleSrgNet` is the lightweight baseline for fast iteration.
 - `PoreFlowNet` contains the TauGate and fusion ablation path used for model comparisons.
+- `PoreDualNet` is the current dual-path model with a residual TauGate and descriptor shortcut.
 - Reported metrics should be interpreted under leave-one-rock-out CV, not random train/test split.
 
 ## Citation
