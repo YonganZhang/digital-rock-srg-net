@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="280" viewBox="0 0 960 280" role="img" aria-labelledby="title desc">
+  <title id="title">Digital-Rock-SrgNet</title>
+  <desc id="desc">A voxel rock mark flowing into a compact neural surrogate model.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#102033"/>
+      <stop offset="0.48" stop-color="#173e4f"/>
+      <stop offset="1" stop-color="#1f5f5b"/>
+    </linearGradient>
+    <linearGradient id="cube" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9f3ff"/>
+      <stop offset="1" stop-color="#7fd8c4"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#07121d" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="960" height="280" rx="34" fill="url(#bg)"/>
+  <g opacity="0.23" stroke="#c6f6ff" stroke-width="1">
+    <path d="M32 48H928"/>
+    <path d="M32 96H928"/>
+    <path d="M32 144H928"/>
+    <path d="M32 192H928"/>
+    <path d="M32 240H928"/>
+    <path d="M96 24V256"/>
+    <path d="M192 24V256"/>
+    <path d="M288 24V256"/>
+    <path d="M384 24V256"/>
+    <path d="M480 24V256"/>
+    <path d="M576 24V256"/>
+    <path d="M672 24V256"/>
+    <path d="M768 24V256"/>
+    <path d="M864 24V256"/>
+  </g>
+  <g transform="translate(74 50)" filter="url(#soft)">
+    <path d="M86 0L172 48V144L86 192L0 144V48Z" fill="#0c1826" stroke="#b8f1ff" stroke-width="3"/>
+    <path d="M86 0L172 48L86 96L0 48Z" fill="url(#cube)" opacity="0.96"/>
+    <path d="M0 48L86 96V192L0 144Z" fill="#66b8c4" opacity="0.92"/>
+    <path d="M172 48L86 96V192L172 144Z" fill="#3a9b91" opacity="0.92"/>
+    <g fill="#102033" opacity="0.78">
+      <circle cx="67" cy="45" r="9"/>
+      <circle cx="103" cy="58" r="7"/>
+      <circle cx="88" cy="84" r="6"/>
+      <circle cx="45" cy="111" r="7"/>
+      <circle cx="75" cy="132" r="8"/>
+      <circle cx="121" cy="124" r="6"/>
+      <circle cx="137" cy="84" r="8"/>
+    </g>
+  </g>
+  <g transform="translate(294 70)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 70C56 18 112 122 168 70S280 18 336 70" stroke="#a7f3d0" stroke-width="7"/>
+    <path d="M0 106C56 54 112 158 168 106S280 54 336 106" stroke="#93c5fd" stroke-width="7" opacity="0.85"/>
+    <path d="M374 48H456L510 86L456 124H374L320 86Z" fill="#0c1826" stroke="#d9f99d" stroke-width="4"/>
+    <circle cx="402" cy="86" r="10" fill="#d9f99d"/>
+    <circle cx="442" cy="86" r="10" fill="#a7f3d0"/>
+    <circle cx="482" cy="86" r="10" fill="#93c5fd"/>
+  </g>
+  <g transform="translate(330 178)">
+    <text x="0" y="0" fill="#f8fafc" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="40" font-weight="800">Digital-Rock-SrgNet</text>
+    <text x="2" y="38" fill="#d5edf2" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="18" font-weight="500">3D-CNN surrogate models for residual-gas-saturation prediction</text>
+  </g>
+</svg>

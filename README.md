@@ -1,259 +1,203 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/%F0%9F%AA%A8-Digital%20Rock%20Physics-3b5b92?style=for-the-badge" alt="Digital Rock Physics"/>
+<img src="assets/digital-rock-srgnet.svg" alt="Digital-Rock-SrgNet" width="100%">
 
-# Digital‑Rock‑SrgNet
+# Digital-Rock-SrgNet
 
-#### 🧠 3D‑CNN surrogate models for **residual‑gas‑saturation** prediction from digital rock cores
+**3D-CNN surrogate models for predicting residual gas saturation from digital rock cores.**
 
-*Learn two‑phase‑flow outcomes directly from pore‑scale voxel geometry —<br/>replacing minutes‑to‑hours of Lattice‑Boltzmann (LBM) and pore‑network (Stokes) simulation with a millisecond forward pass.*
+Replace slow pore-scale flow simulation loops with trainable volumetric models that fuse binary
+voxel geometry and morphological descriptors under leakage-safe leave-one-rock-out evaluation.
 
-<br/>
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-3776ab.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
-[![Lightning](https://img.shields.io/badge/Lightning-2.0+-792ee5.svg?style=flat-square&logo=lightning&logoColor=white)](https://lightning.ai/)
-[![Status](https://img.shields.io/badge/status-research%20preview-f5a623.svg?style=flat-square)](#-project-status)
-
-<br/>
-
-```
-   ╭──────────────╮      ╭───────────────╮      ╭──────────────────╮
-   │  3D pore     │      │   3D‑CNN  +   │      │  range‑safe head │
-   │  geometry    │ ───▶ │   descriptor  │ ───▶ │   S_rg ∈ [0,1]   │
-   │  (voxels)    │      │   fusion      │      │   k  >  0        │
-   ╰──────────────╯      ╰───────────────╯      ╰──────────────────╯
-        input                 surrogate                 physics
-```
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-3776ab.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![Lightning](https://img.shields.io/badge/Lightning-2.0%2B-792ee5.svg)](https://lightning.ai/)
+[![Status](https://img.shields.io/badge/status-research%20preview-f59e0b.svg)](#project-status)
 
 </div>
 
-<div align="center">
-  <sub><b>⚡ ms inference</b></sub> &nbsp;•&nbsp;
-  <sub><b>🔬 physics‑consistent outputs</b></sub> &nbsp;•&nbsp;
-  <sub><b>🧪 leakage‑safe cross‑validation</b></sub> &nbsp;•&nbsp;
-  <sub><b>🏗️ 15‑model zoo</b></sub>
-</div>
-
 ---
 
-## 📑 Contents
+## Contents
 
-- [Overview](#-overview)
-- [How it works](#-how-it-works)
-- [Method highlights](#-method-highlights)
-- [Model zoo](#-model-zoo)
-- [Repository layout](#-repository-layout)
-- [Quick start](#-quick-start)
-- [Dataset schema](#️-dataset-not-included)
-- [Project status](#-project-status)
-- [Citation](#-citation)
-- [License](#-license)
+- [Why This Exists](#why-this-exists)
+- [What Is Included](#what-is-included)
+- [Quick Start](#quick-start)
+- [Model Zoo](#model-zoo)
+- [Method Notes](#method-notes)
+- [Dataset Format](#dataset-format)
+- [Repository Layout](#repository-layout)
+- [Project Status](#project-status)
+- [Citation](#citation)
+- [License](#license)
 
----
+## Why This Exists
 
-## ✨ Overview
+Residual gas saturation (`S_rg`) is usually estimated by running computationally expensive
+pore-scale simulation on voxelized rock samples. This repository provides a compact research
+codebase for learning that mapping directly:
 
-Predicting the **residual gas saturation** (`S_rg ∈ [0, 1]`) and **permeability** (`k`) of porous
-rock normally requires running a full physical simulator — LBM for two‑phase flow, OpenPNM /
-Stokes for single‑phase flow — on every voxelized core, costing minutes to hours **per sample**.
-
-**Digital‑Rock‑SrgNet** replaces that simulator with a learned surrogate: a 3D convolutional
-network ingests the raw binary pore geometry (plus a vector of morphological descriptors) and
-predicts the flow target **end‑to‑end in milliseconds**.
-
-This repository ships the **model architectures, dataset interface, and a fully reproducible
-cross‑validation training loop** used to benchmark a family of 3D‑CNN / attention / transformer
-surrogates on a 360‑sample digital‑rock dataset.
-
-> [!NOTE]
-> **Why this is hard.** With only ~360 cores and a volumetric input, the model is heavily
-> over‑parameterized relative to the data. The entire study is therefore built around
-> **leakage‑safe, leave‑one‑rock‑out cross‑validation** and aggressive regularization rather than
-> a single train/test split.
-
----
-
-## 🔧 How it works
-
-```mermaid
-flowchart LR
-    A["🪨 Voxel geometry<br/>(N, D, D, D) uint8"] --> C["3D‑CNN backbone<br/>SimpleCNN · ResNet3D · PoreFormer …"]
-    B["📐 Morphological<br/>descriptors (N, F)"] --> D["Descriptor MLP"]
-    C --> E{{"Fusion<br/>concat · cross‑attn · FiLM · TauGate"}}
-    D --> E
-    E --> F["Range‑safe heads"]
-    F --> G["💧 S_rg ∈ [0,1]<br/>(logit‑space + clip)"]
-    F --> H["🌀 k > 0<br/>(via log k)"]
-
-    style A fill:#e3edf7,stroke:#3b5b92,color:#1a2b44
-    style B fill:#e3edf7,stroke:#3b5b92,color:#1a2b44
-    style G fill:#dff3e6,stroke:#2e7d4f,color:#143524
-    style H fill:#dff3e6,stroke:#2e7d4f,color:#143524
-    style E fill:#fbeed6,stroke:#b9821f,color:#4a3208
+```text
+3D pore voxels + morphology descriptors -> neural surrogate -> S_rg in [0, 1]
 ```
 
-**Leave‑one‑rock‑out cross‑validation** — sub‑volumes cut from the same parent core are strongly
-correlated, so a naïve random split leaks information. We group by **parent‑rock id** and hold out
-one whole core at a time:
+The code is built around the practical constraints of this dataset: roughly hundreds of samples,
+strong correlation among sub-volumes from the same parent core, and a need to avoid validation
+leakage. The training loop therefore uses grouped cross-validation by parent-rock prefix instead
+of random splitting.
 
-```mermaid
-flowchart TB
-    subgraph CV["6‑fold group CV · grouped by parent‑rock prefix"]
-      direction LR
-      R1["core 1"]:::v --> M1
-      R2["core 2"]:::t --> M1
-      R3["core 3"]:::t --> M1
-      R4["core 4"]:::t --> M1
-      R5["core 5"]:::t --> M1
-      R6["core 6"]:::t --> M1["fold 1 → validate on core 1"]
-    end
-    classDef v fill:#f6c6c6,stroke:#a23,color:#411;
-    classDef t fill:#cfe8d4,stroke:#2e7d4f,color:#143;
-```
+## What Is Included
 
----
+| Area | Included |
+| --- | --- |
+| Data interface | Cached `.npz` loader for voxel grids, tabular descriptors, targets, and group ids |
+| Splitting protocol | Leave-one-rock-out cross-validation using the `prefix` parent-core key |
+| Architectures | Lightweight 3D CNNs, descriptor-only baseline, 3D ResNet, fusion variants, PoreFlowNet |
+| Fusion modules | Concatenation, cross-attention-style gating, FiLM, and TauGate components |
+| Training | PyTorch Lightning trainer with per-fold `R2`, `MAE`, `RMSE`, augmentation, and JSON summaries |
 
-## 🔬 Method highlights
+The dataset itself is not distributed in this repository.
 
-| 🎯 Design choice | Why it matters |
-|---|---|
-| **Voxel CNN + descriptor MLP, late fusion** | fuses raw 3D geometry with cheap morphological features (porosity, tortuosity, connectivity …) |
-| **Physical‑range outputs** | `S_rg` is trained in logit space and clipped to `[0, 1]`; permeability via `log k` guarantees `k > 0` |
-| **Leave‑one‑rock‑out CV** | grouping by **parent‑rock prefix** prevents train/val leakage between correlated sub‑volumes |
-| **Z‑axis‑aware augmentation** | the pore network is percolated along Z, so augmentation rotates/mirrors only the X–Y plane, never the percolation axis |
-| **Train‑set‑only normalization** | feature mean/std are computed on the training fold alone — leakage‑safe by construction |
-
----
-
-## 🧩 Model zoo
-
-Every model shares the signature `forward(voxel, features) -> prediction` and is selectable via
-`--model`.
-
-| `--model` | Class | Backbone | Fusion | Notes |
-|---|---|---|---|---|
-| `phi` | `PhiOnlyBaseline` | — | — | descriptor‑only MLP baseline (no voxels) |
-| `simple` | `SimpleSrgNet` | 3‑layer 3D‑CNN | concat | ⭐ **main lightweight baseline** |
-| `simple_sigmoid` | `SimpleSrgNetSigmoid` | 3‑layer 3D‑CNN | concat | + sigmoid head |
-| `simple_taugate` | `SimpleTauGateNet` | 3‑layer 3D‑CNN | concat + TauGate | physics‑guided gating |
-| `resnet18_concat` | `ResNetSrgNet` | 3D‑ResNet18 | concat | deeper backbone |
-| `resnet18_crossattn` | `ResNetSrgNet` | 3D‑ResNet18 | cross‑attention | |
-| `resnet18_film` | `ResNetSrgNet` | 3D‑ResNet18 | FiLM | feature‑wise modulation |
-| `resnet10_tiny_crossattn` | `ResNet10Tiny` | tiny 3D‑ResNet10 | cross‑attention | low‑parameter |
-| `ms_porenet_crossattn` | `MSPoreNet` | multi‑scale Inception‑3D | cross‑attention | |
-| `porecoat_crossattn` | `PoreCoAt` | conv + attention (CoAtNet‑style) | cross‑attention | |
-| `poreformer_crossattn` | `PoreFormer` | 3D vision transformer | cross‑attention | |
-| `poreflownet` | `PoreFlowNet` | 3D‑ResNet | cross‑attention | 🔱 **dual‑head** (`S_rg` + `log k`) + TauGate |
-| `poreflownet_no_taugate` | `PoreFlowNet_NoTauGate` | 3D‑ResNet | cross‑attention | ablation |
-| `poreflownet_no_crossattn` | `PoreFlowNet_NoCrossAttn` | 3D‑ResNet | concat | ablation |
-| `voxel_only_cnn` | `VoxelOnlyCNN` | 3D‑CNN | — | geometry‑only (no descriptors) |
-
-> Reusable building blocks in [`models_3d.py`](models_3d.py): `BasicBlock3D`, `ResNet3D`,
-> `ConcatFusion`, `CrossAttnFusion`, `FiLMFusion`, `TauGate`, and Inception / MBConv / transformer 3D blocks.
-
----
-
-## 📦 Repository layout
-
-```
-digital-rock-srg-net/
-├── 🧱 model.py          # lightweight baselines: SimpleSrgNet, PhiOnlyBaseline, TauGate variants
-├── 🏗️  models_3d.py      # the full 3D model zoo + fusion blocks + PoreFlowNet
-├── 🗃️  data.py           # dataset interface, leave-one-rock-out splitting, leakage-safe stats
-├── 🚂 train.py          # 6-fold cross-validation training / evaluation entry point
-├── 📋 requirements.txt
-├── 📜 LICENSE
-└── 📖 README.md
-```
-
----
-
-## 🚀 Quick start
+## Quick Start
 
 ```bash
 git clone https://github.com/YonganZhang/digital-rock-srg-net.git
 cd digital-rock-srg-net
-pip install -r requirements.txt
-
-# Train + 6-fold leave-one-rock-out evaluation of the main baseline
-python train.py --data data/processed/voxel_128.npz --model simple --epochs 80 \
-                --scheduler cosine --augment --gpu 0
-
-# Descriptor-only baseline for comparison
-python train.py --data data/processed/voxel_128.npz --model phi --epochs 30 --gpu 0
+python -m pip install -r requirements.txt
 ```
 
-Per‑fold and aggregate `R² / MAE / RMSE` are printed to stdout and written to
-`runs/p1_<model>_<tag>.json`.
+Train the lightweight baseline with leakage-safe grouped CV:
 
-<details>
-<summary><b>🎛️ Command‑line options</b></summary>
+```bash
+python train.py \
+  --data data/processed/voxel_128.npz \
+  --model simple \
+  --epochs 80 \
+  --scheduler cosine \
+  --augment \
+  --gpu 0 \
+  --tag simple_cosine_aug
+```
 
-<br/>
+Run a descriptor-only baseline for comparison:
 
-| Flag | Default | Description |
-|---|---|---|
-| `--data` | `data/processed/voxel_128.npz` | path to the cached dataset (see schema below) |
-| `--model` | `simple` | architecture (see model zoo) |
-| `--epochs` | `30` | training epochs per fold |
-| `--batch-size` | `8` | mini‑batch size |
-| `--gpu` | `1` | CUDA device index |
-| `--augment` | off | enable X–Y rotation/mirror augmentation |
-| `--scheduler` | `none` | `none` or `cosine` |
-| `--target-transform` | `logit` | `logit` (range‑safe) or `none` |
-| `--tag` | `default` | suffix for the output json |
+```bash
+python train.py \
+  --data data/processed/voxel_128.npz \
+  --model phi \
+  --epochs 30 \
+  --gpu 0 \
+  --tag phi_baseline
+```
 
-</details>
+Training writes fold metrics and aggregate scores to:
 
----
+```text
+runs/p1_<model>_<tag>.json
+```
 
-## 🗂️ Dataset (not included)
+## Model Zoo
 
-> [!IMPORTANT]
-> The digital‑rock voxel data and morphological descriptors are part of an ongoing study and are
-> **not distributed with this repository.** This repo open‑sources the **modeling code only.**
+All models consume `voxel` and `features` tensors and predict one scalar residual-gas-saturation
+value per sample.
 
-`data.py` expects a single cached `.npz` (built offline) with the following arrays:
+| CLI name | Main class | Role |
+| --- | --- | --- |
+| `phi` | `PhiOnlyBaseline` | Descriptor-only sanity baseline |
+| `simple` | `SimpleSrgNet` | Lightweight 3-layer 3D-CNN + descriptor MLP |
+| `simple_sigmoid` | `SimpleSrgNetSigmoid` | Same backbone with sigmoid output head |
+| `simple_taugate` | `SimpleTauGateNet` | Lightweight CNN with tau-guided channel gating |
+| `resnet18_concat` | `ResNetSrgNet` | 3D ResNet with concatenation fusion |
+| `resnet18_crossattn` | `ResNetSrgNet` | 3D ResNet with cross-attention-style fusion |
+| `resnet18_film` | `ResNetSrgNet` | 3D ResNet with FiLM feature modulation |
+| `resnet10_tiny_crossattn` | `ResNet10Tiny` | Smaller ResNet-style backbone |
+| `ms_porenet_crossattn` | `MSPoreNet` | Multi-scale 3D Inception-style backbone |
+| `porecoat_crossattn` | `PoreCoAt` | Compact convolution + attention backbone |
+| `poreformer_crossattn` | `PoreFormer` | Lightweight volumetric transformer variant |
+| `poreflownet` | `PoreFlowNet` | TauGate + cross-attention-style fusion model |
+| `poreflownet_no_taugate` | `PoreFlowNet_NoTauGate` | PoreFlowNet ablation without TauGate |
+| `poreflownet_no_crossattn` | `PoreFlowNet_NoCrossAttn` | PoreFlowNet ablation with concat fusion |
+| `voxel_only_cnn` | `VoxelOnlyCNN` | Geometry-only baseline without descriptors |
+
+## Method Notes
+
+```mermaid
+flowchart LR
+    A["Voxel grid<br/>(N, D, D, D)"] --> B["3D backbone"]
+    C["Morphological descriptors<br/>(N, F)"] --> D["Feature MLP"]
+    B --> E["Fusion"]
+    D --> E
+    E --> F["S_rg prediction"]
+```
+
+```mermaid
+flowchart TB
+    subgraph CV["Leave-one-rock-out CV"]
+      direction LR
+      R1["core 1"] --> F1["fold 1 validation"]
+      R2["core 2"] --> T1["fold 1 training"]
+      R3["core 3"] --> T1
+      R4["core 4"] --> T1
+      R5["core 5"] --> T1
+      R6["core 6"] --> T1
+    end
+```
+
+Key implementation choices:
+
+- Sub-volumes from the same parent rock are never split across train and validation folds.
+- Feature normalization statistics are computed on each training fold only.
+- Augmentation is restricted to rotations and flips in the X-Y plane; the Z axis is kept as the
+  through-flow direction.
+- The default `logit` target transform trains on logit-space `S_rg` and maps predictions back to
+  `[0, 1]` for evaluation.
+
+## Dataset Format
+
+`data.py` expects a cached `.npz` file with these arrays:
 
 | Key | Shape | Dtype | Meaning |
-|---|---|---|---|
-| `voxel` | `(N, D, D, D)` | `uint8` | binary pore geometry (`D` = 128 or 256), kept as `uint8` in RAM |
-| `features` | `(N, F)` | `float32` | morphological descriptors (porosity, tortuosity, connectivity, …) |
-| `Srg` | `(N,)` | `float32` | residual gas saturation ∈ [0, 1] — **primary target** |
-| `K` | `(N,)` | `float32` | permeability > 0 |
-| `logK` | `(N,)` | `float32` | `log10(K)` — regression target for `k` |
-| `sample_id` | `(N,)` | str | per‑sub‑volume id |
-| `prefix` | `(N,)` | str | **parent‑rock id** — the grouping key for CV |
-| `feature_names` | `(F,)` | str | descriptor names |
+| --- | --- | --- | --- |
+| `voxel` | `(N, D, D, D)` | `uint8` | Binary pore geometry, loaded as `uint8` and cast per batch |
+| `features` | `(N, F)` | `float32` | Morphological descriptors |
+| `Srg` | `(N,)` | `float32` | Residual gas saturation target in `[0, 1]` |
+| `K` | `(N,)` | `float32` | Permeability value retained in the cache |
+| `logK` | `(N,)` | `float32` | Log-permeability value retained in the cache |
+| `sample_id` | `(N,)` | string | Sub-volume sample id |
+| `prefix` | `(N,)` | string | Parent-rock id used for grouped CV |
+| `feature_names` | `(F,)` | string | Descriptor names |
 
-To use your own data, produce an `.npz` with these keys and point `--data` at it.
+To use your own data, build this `.npz` file offline and pass it with `--data`.
 
----
+## Repository Layout
 
-## 📊 Project status
+```text
+digital-rock-srg-net/
+├── assets/digital-rock-srgnet.svg  # README project mark
+├── data.py                         # cached dataset loader and grouped splitting
+├── model.py                        # lightweight baselines
+├── models_3d.py                    # 3D backbones, fusion modules, PoreFlowNet variants
+├── train.py                        # cross-validation training entry point
+├── requirements.txt
+├── LICENSE
+└── README.md
+```
 
-> [!WARNING]
-> This is **active research code** accompanying a paper in preparation — not a frozen, pretrained
-> production model.
+## Project Status
 
-Findings so far:
+This is active research code for a digital-rock surrogate-modeling study. It is not a packaged
+library and does not ship pretrained weights or private voxel data.
 
-- 🥇 The strongest configuration to date is `SimpleSrgNet` (lightweight 3‑layer 3D‑CNN, cosine LR,
-  X–Y augmentation), reaching **R² ≈ 0.49** under leave‑one‑rock‑out CV.
-- 📉 Deeper backbones (3D‑ResNet18, transformers) **did not** outperform the lightweight baseline
-  at this sample size — a recurring small‑data lesson, documented honestly in the study.
-- 🚫 No pretrained weights are shipped; train from scratch with your own data.
+Current benchmark notes in this branch:
 
-We release the architecture family so others can reproduce these comparisons and build on the
-benchmark.
+- `SimpleSrgNet` is the lightweight baseline for fast iteration.
+- `PoreFlowNet` contains the TauGate and fusion ablation path used for model comparisons.
+- Reported metrics should be interpreted under leave-one-rock-out CV, not random train/test split.
 
----
+## Citation
 
-## 📖 Citation
-
-A paper describing this work is in preparation. Until it appears, please cite the repository:
+A paper describing this work is in preparation. Until then, cite the repository:
 
 ```bibtex
 @software{wang_digital_rock_srgnet_2026,
@@ -265,14 +209,7 @@ A paper describing this work is in preparation. Until it appears, please cite th
 }
 ```
 
----
+## License
 
-## 📜 License
-
-Released under the [MIT License](LICENSE). The accompanying dataset is **not** covered by this
-license and is not distributed here.
-
-<div align="center">
-<br/>
-<sub>Built for reproducible digital‑rock physics · contributions & issues welcome 🤝</sub>
-</div>
+Released under the [MIT License](LICENSE). The accompanying dataset is not distributed in this
+repository and is not covered by this software license.
